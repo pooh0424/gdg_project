@@ -3,396 +3,266 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視覺分析 (離線修正版)</title>
+    <title>食物熱量快篩鏡 (FoodLens AI Offline)</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@latest"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet@latest"></script>
+
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --text-color: #f1f5f9;
-            --accent-color: #38bdf8;
-            --btn-bg: #0ea5e9;
-            --btn-hover: #0284c7;
-        }
-
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            background-color: var(--bg-color);
-            color: var(--text-color);
+        /* CSS樣式：確保介面適合手機操作 */
+        body, html {
             margin: 0;
-            padding: 15px;
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            min-height: 100vh;
+            padding: 0;
+            height: 100%;
+            background-color: #222;
+            color: #fff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            overflow: hidden; /* 防止滾動 */
         }
 
-        .container {
-            width: 100%;
-            max-width: 600px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
-        }
-
-        h1 {
-            text-align: center;
-            margin: 10px 0;
-            font-size: 1.5rem;
-            background: linear-gradient(90deg, #38bdf8, #818cf8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        .status-bar {
-            background-color: var(--card-bg);
-            padding: 10px 15px;
-            border-radius: 8px;
-            font-size: 0.85rem;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border: 1px solid #334155;
-        }
-
-        .image-container {
+        #container {
             position: relative;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        /* 視訊容器，盡量佔滿空間 */
+        #video-wrapper {
+            flex: 1;
             width: 100%;
-            background-color: #000;
-            border-radius: 12px;
-            overflow: hidden;
-            min-height: 200px;
             display: flex;
             justify-content: center;
             align-items: center;
-            border: 2px dashed #334155;
+            background: #000;
+            position: relative;
         }
 
-        .image-container canvas {
-            position: absolute;
-            top: 0;
-            left: 0;
+        /* 視訊元素本身 */
+        #video {
+            /* 確保視訊不變形，以覆蓋方式呈現 */
             width: 100%;
             height: 100%;
-            object-fit: contain;
+            object-fit: cover; 
         }
 
-        #imageCanvas { z-index: 1; } 
-        #maskCanvas { z-index: 2; opacity: 0.7; pointer-events: none; } 
-
-        .controls {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 10px;
-        }
-
-        button, .file-btn {
-            background-color: var(--btn-bg);
-            color: white;
-            border: none;
-            padding: 12px;
-            border-radius: 8px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            text-align: center;
-            transition: background 0.2s;
-            display: block;
-        }
-
-        button:disabled { background-color: #475569; opacity: 0.7; cursor: not-allowed; }
-        button:active { transform: scale(0.98); }
-
-        input[type="file"] { display: none; }
-
-        .legend {
-            background-color: var(--card-bg);
-            padding: 15px;
-            border-radius: 12px;
-            margin-top: 10px;
-            display: none; 
-        }
-
-        .legend-title { font-size: 0.9rem; margin-bottom: 10px; color: #94a3b8; }
-        
-        .legend-items {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-
-        .tag {
-            padding: 4px 8px;
-            border-radius: 4px;
-            font-size: 0.75rem;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-            font-weight: bold;
-        }
-
-        .loading-overlay {
+        /* 讀取中的遮罩層 */
+        #loading-overlay {
             position: absolute;
             top: 0; left: 0; right: 0; bottom: 0;
-            background: rgba(0,0,0,0.7);
-            z-index: 10;
-            display: none;
+            background: rgba(0,0,0,0.8);
+            display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
-            color: white;
+            z-index: 10;
         }
 
         .spinner {
-            width: 30px; height: 30px;
-            border: 3px solid #ffffff;
-            border-top: 3px solid transparent;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #3498db;
             border-radius: 50%;
+            width: 40px;
+            height: 40px;
             animation: spin 1s linear infinite;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* 結果顯示區域 */
+        #result-panel {
+            width: 100%;
+            padding: 20px;
+            background: #fff;
+            color: #333;
+            border-radius: 20px 20px 0 0;
+            box-shadow: 0px -5px 15px rgba(0,0,0,0.2);
+            text-align: center;
+            z-index: 5;
+            position: relative;
         }
 
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        #item-name {
+            font-size: 1.5em;
+            font-weight: bold;
+            margin-bottom: 5px;
+            color: #333;
+        }
+
+        #calorie-info {
+            font-size: 1.2em;
+            color: #e67e22; /* 橘色強調熱量 */
+            font-weight: bold;
+        }
+        
+        #confidence-meter {
+            margin-top: 10px;
+            font-size: 0.8em;
+            color: #666;
+        }
+
     </style>
 </head>
 <body>
 
-<div class="container">
-    <h1>👁️ AI 語意分割相機</h1>
-
-    <div class="status-bar">
-        <span id="statusText">系統待命 (未載入模型)</span>
-        <span id="memInfo">SegFormer</span>
+<div id="container">
+    <div id="loading-overlay">
+        <div class="spinner"></div>
+        <div id="loading-text">正在下載 AI 模型與權重...<br>(首次需網路，之後可離線)</div>
     </div>
 
-    <div class="image-container" id="imgContainer">
-        <div style="color: #64748b;">請選擇圖片或拍照</div>
-        <canvas id="imageCanvas"></canvas>
-        <canvas id="maskCanvas"></canvas>
-        
-        <div class="loading-overlay" id="loader">
-            <div class="spinner"></div>
-            <span id="loaderText">AI 運算中...</span>
-        </div>
+    <div id="video-wrapper">
+        <video id="video" autoplay playsinline muted></video>
     </div>
 
-    <div class="controls">
-        <label class="file-btn">
-            📷 拍照 / 選圖
-            <input type="file" id="uploadInput" accept="image/*">
-        </label>
-        
-        <button id="runBtn" disabled>▶ 開始分析</button>
-    </div>
-
-    <button id="loadBtn" style="width: 100%; margin-top: 10px; background-color: #4f46e5;">
-        ⬇ 下載模型 (約 20MB)
-    </button>
-
-    <div class="legend" id="legendArea">
-        <div class="legend-title">偵測到的物件：</div>
-        <div class="legend-items" id="legendTags"></div>
-    </div>
-    
-    <div style="margin-top: 20px; font-size: 0.8rem; color: #64748b; text-align: center;">
-        <p>初次需連網，之後可離線使用。</p>
+    <div id="result-panel">
+        <div id="item-name">準備中...</div>
+        <div id="calorie-info">-- kcal / 100g</div>
+        <div id="confidence-meter">信心度: 0%</div>
     </div>
 </div>
 
-<script type="module">
-    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
+<script>
+    // === 變數設定 ===
+    const videoElement = document.getElementById('video');
+    const loadingOverlay = document.getElementById('loading-overlay');
+    const loadingText = document.getElementById('loading-text');
+    const itemNameElement = document.getElementById('item-name');
+    const calorieInfoElement = document.getElementById('calorie-info');
+    const confidenceMeterElement = document.getElementById('confidence-meter');
 
-    // 離線關鍵設定
-    env.allowLocalModels = false;
-    env.useBrowserCache = true;
+    let net; // 存放載入後的 MobileNet 模型
+    let isProcessing = false; // 防止重複推論
 
-    const $ = id => document.getElementById(id);
-    const statusText = $('statusText');
-    const loadBtn = $('loadBtn');
-    const runBtn = $('runBtn');
-    const uploadInput = $('uploadInput');
-    const imageCanvas = $('imageCanvas');
-    const maskCanvas = $('maskCanvas');
-    const loader = $('loader');
-    const loaderText = $('loaderText');
-    const legendArea = $('legendArea');
-    const legendTags = $('legendTags');
-    const imgContainer = $('imgContainer');
+    // === 模擬的熱量資料庫 (因為 MobileNet 只會給物品名稱) ===
+    // 這裡簡單列舉一些 MobileNet 可能辨識出的食物名稱
+    const calorieDatabase = {
+        'banana': 89,
+        'apple': 52,
+        'orange': 47,
+        'broccoli': 34,
+        'cucumber': 15,
+        'hotdog': 290,
+        'pizza': 266,
+        'burger': 295,
+        'sandwhich': 250,
+        'coffee mug': 2, // 咖啡
+        'water bottle': 0,
+    };
 
-    let segmenter = null;
-    let rawImage = null; 
-
-    // 1. 載入模型
-    loadBtn.addEventListener('click', async () => {
+    // === 核心功能 1: 啟動攝影機 ===
+    async function setupCamera() {
+        loadingText.innerText = "正在啟動攝影機...";
         try {
-            loadBtn.disabled = true;
-            loadBtn.textContent = "模型下載中...";
-            statusText.textContent = "正在下載模型...";
+            // 要求使用後置鏡頭 (environment)
+            const stream = await navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: 'environment',
+                    width: { ideal: 640 },
+                    height: { ideal: 480 }
+                },
+                audio: false
+            });
+            videoElement.srcObject = stream;
             
-            // 使用 SegFormer 模型
-            segmenter = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512', {
-                progress_callback: (data) => {
-                    if (data.status === 'progress') {
-                        const pct = Math.round(data.progress || 0);
-                        loadBtn.textContent = `下載中... ${pct}%`;
+            // 確保視訊資料已載入才開始
+            return new Promise((resolve) => {
+                videoElement.onloadedmetadata = () => {
+                    resolve(videoElement);
+                };
+            });
+        } catch (e) {
+            alert("無法存取攝影機，請確認權限設定。\n錯誤: " + e.message);
+            throw e;
+        }
+    }
+
+    // === 核心功能 2: 載入 AI 模型 (此步驟需要網路，之後會被快取) ===
+    async function loadModel() {
+        loadingText.innerHTML = "正在載入 MobileNet 模型...<br>(檔案較大，請耐心等候)";
+        try {
+            // 載入 mobilenet，這裡使用預設配置
+            // 瀏覽器會自動快取這些資源
+            net = await mobilenet.load();
+            console.log("MobileNet model loaded successfully");
+        } catch (e) {
+            alert("模型載入失敗，請檢查網路連線。\n錯誤: " + e.message);
+            loadingText.innerText = "模型載入失敗";
+            throw e;
+        }
+    }
+
+    // === 核心功能 3: 進行影像辨識與熱量估算 ===
+    async function detectFrame() {
+        if (!net || isProcessing) return; // 如果模型沒好或正在忙，就跳過
+
+        isProcessing = true;
+        try {
+            // 使用模型對目前的視訊畫面進行分類
+            // classify 接收視訊元素，回傳可能性最高的前幾個結果
+            const result = await net.classify(videoElement);
+
+            if (result && result.length > 0) {
+                const topResult = result[0]; // 取信心度最高的結果
+                const className = topResult.className.toLowerCase(); // 轉小寫以利比對
+                const confidence = (topResult.probability * 100).toFixed(1);
+
+                // 顯示辨識出的物品名稱 (取逗號前的第一個主要名稱)
+                const displayName = topResult.className.split(',')[0];
+                itemNameElement.innerText = displayName;
+                confidenceMeterElement.innerText = `信心度: ${confidence}%`;
+
+                // 估算熱量
+                let estimatedCal = "未知";
+                // 簡單的關鍵字匹配來尋找熱量
+                for (const key in calorieDatabase) {
+                    if (className.includes(key)) {
+                        estimatedCal = calorieDatabase[key];
+                        break;
                     }
                 }
-            });
 
-            statusText.textContent = "模型已就緒 (離線可用)";
-            loadBtn.style.display = 'none';
-            runBtn.disabled = false;
-            
-            if (rawImage) runBtn.click();
-
-        } catch (err) {
-            console.error(err);
-            statusText.textContent = "載入失敗";
-            loadBtn.textContent = "重試下載";
-            loadBtn.disabled = false;
-            alert("模型下載失敗，請檢查網路連接。");
-        }
-    });
-
-    // 2. 處理圖片
-    uploadInput.addEventListener('change', (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const img = new Image();
-            img.onload = () => {
-                const maxSize = 800; // 限制大小優化效能
-                let w = img.width;
-                let h = img.height;
-                
-                if (w > maxSize || h > maxSize) {
-                    const ratio = Math.min(maxSize / w, maxSize / h);
-                    w *= ratio;
-                    h *= ratio;
-                }
-
-                imageCanvas.width = w;
-                imageCanvas.height = h;
-                maskCanvas.width = w;
-                maskCanvas.height = h;
-
-                const ctx = imageCanvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, w, h);
-                
-                const mCtx = maskCanvas.getContext('2d');
-                mCtx.clearRect(0, 0, w, h);
-                
-                imgContainer.querySelector('div').style.display = 'none';
-                legendArea.style.display = 'none';
-
-                rawImage = imageCanvas.toDataURL('image/jpeg');
-
-                if (segmenter) runBtn.disabled = false;
-            };
-            img.src = event.target.result;
-        };
-        reader.readAsDataURL(file);
-    });
-
-    // 3. 執行預測
-    runBtn.addEventListener('click', async () => {
-        if (!segmenter || !rawImage) {
-            alert("請先載入模型並選圖");
-            return;
-        }
-
-        loader.style.display = 'flex';
-        loaderText.textContent = "AI 識別中...";
-        runBtn.disabled = true;
-
-        try {
-            const output = await segmenter(rawImage);
-            console.log("Segment Output:", output);
-            drawSegmentation(output);
-        } catch (err) {
-            console.error(err);
-            alert("分析錯誤: " + err.message);
-        } finally {
-            loader.style.display = 'none';
-            runBtn.disabled = false;
-        }
-    });
-
-    // 4. 繪製遮罩 (修正版：處理 Grayscale -> RGBA)
-    function drawSegmentation(results) {
-        const ctx = maskCanvas.getContext('2d');
-        const w = maskCanvas.width;
-        const h = maskCanvas.height;
-        ctx.clearRect(0, 0, w, h);
-        
-        legendTags.innerHTML = '';
-
-        results.forEach((item, index) => {
-            const { label, mask } = item;
-            
-            const hue = (index * 137.5) % 360;
-            const color = `hsla(${hue}, 70%, 50%, 0.6)`; 
-            const solidColor = `hsl(${hue}, 70%, 50%)`;
-
-            // --- 關鍵修正：將 1-channel mask 轉換為 4-channel RGBA ---
-            const pixelCount = mask.width * mask.height;
-            const rgbaData = new Uint8ClampedArray(pixelCount * 4);
-            
-            for (let i = 0; i < pixelCount; i++) {
-                const val = mask.data[i];
-                if (val > 0) {
-                    // 使用白色 (255,255,255) 配合 alpha
-                    // 之後會用 tint 染色
-                    rgbaData[i * 4] = 255;     // R
-                    rgbaData[i * 4 + 1] = 255; // G
-                    rgbaData[i * 4 + 2] = 255; // B
-                    rgbaData[i * 4 + 3] = 255; // A (完全不透明，因為我們用 composite 染色)
+                if (estimatedCal !== "未知") {
+                    calorieInfoElement.innerText = `約 ${estimatedCal} kcal / 100g`;
+                    calorieInfoElement.style.color = "#e67e22";
                 } else {
-                    rgbaData[i * 4 + 3] = 0;   // A (透明)
+                    calorieInfoElement.innerText = "無法估算熱量 (非食物?)";
+                    calorieInfoElement.style.color = "#999";
                 }
             }
-            
-            const imgData = new ImageData(rgbaData, mask.width, mask.height);
-            // -------------------------------------------------------
-
-            // 建立暫存 Canvas
-            const maskCanvasElem = document.createElement('canvas');
-            maskCanvasElem.width = mask.width;
-            maskCanvasElem.height = mask.height;
-            const maskCtx = maskCanvasElem.getContext('2d');
-            maskCtx.putImageData(imgData, 0, 0);
-
-            // 染色與合成
-            ctx.save();
-            
-            const tempC = document.createElement('canvas');
-            tempC.width = w;
-            tempC.height = h;
-            const tCtx = tempC.getContext('2d');
-            
-            // 縮放並繪製遮罩
-            tCtx.drawImage(maskCanvasElem, 0, 0, w, h);
-            
-            // 使用 source-in 只在有遮罩的地方上色
-            tCtx.globalCompositeOperation = 'source-in';
-            tCtx.fillStyle = color;
-            tCtx.fillRect(0, 0, w, h);
-            
-            // 畫回主層
-            ctx.drawImage(tempC, 0, 0);
-            ctx.restore();
-
-            // 新增 Tag
-            const tag = document.createElement('span');
-            tag.className = 'tag';
-            tag.style.backgroundColor = solidColor;
-            tag.textContent = label;
-            legendTags.appendChild(tag);
-        });
-
-        legendArea.style.display = 'block';
+        } catch (e) {
+            console.error("辨識錯誤:", e);
+        } finally {
+            isProcessing = false;
+            // 使用 requestAnimationFrame 持續呼叫下一幀進行辨識
+            // 稍微延遲一下避免手機過熱，這裡設定約每 500ms 執行一次
+            setTimeout(() => {
+                 requestAnimationFrame(detectFrame);
+            }, 500);
+           
+        }
     }
-</script>
 
+    // === 主程式流程 ===
+    async function main() {
+        // 1. 先嘗試啟動攝影機 (使用者體驗較好)
+        await setupCamera();
+        videoElement.play();
+
+        // 2. 接著載入模型
+        await loadModel();
+
+        // 3. 全部準備就緒，隱藏讀取遮罩
+        loadingOverlay.style.display = 'none';
+
+        // 4. 開始循環辨識
+        detectFrame();
+    }
+
+    // 網頁載入後執行主程式
+    window.addEventListener('DOMContentLoaded', main);
+
+</script>
 </body>
 </html>
