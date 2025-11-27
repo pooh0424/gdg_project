@@ -3,286 +3,338 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>On-Device AI 物件辨識</title>
-    
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@3.11.0/dist/tf.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.2/dist/coco-ssd.min.js"></script>
-
+    <title>AI 心情分析儀 (On-Device)</title>
     <style>
+        :root {
+            --bg-color: #1a1a1a;
+            --card-bg: #2d2d2d;
+            --text-color: #e0e0e0;
+            --accent-color: #646cff;
+            --accent-hover: #535bf2;
+            --error-color: #ff6b6b;
+            --success-color: #4caf50;
+        }
+
         body {
-            margin: 0;
-            padding: 0;
-            background-color: #000;
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-            overflow: hidden; /* 防止捲動 */
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            height: 100vh;
-        }
-
-        /* 視訊與畫布的容器 */
-        #cam-container {
-            position: relative;
-            width: 100%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            background: #111;
-        }
-
-        /* 影像與 Canvas 重疊 */
-        video, canvas {
-            position: absolute;
-            width: 100%;
-            height: 100%;
-            object-fit: cover; /* 讓畫面填滿手機螢幕 */
-        }
-
-        /* 介面覆蓋層 (UI Overlay) */
-        #ui-layer {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 10;
-            pointer-events: none; /* 讓點擊穿透到下方 */
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            margin: 0;
             padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            min-height: 100vh;
             box-sizing: border-box;
         }
 
-        /* 狀態列 */
-        .status-bar {
-            background: rgba(0, 0, 0, 0.6);
-            color: #00ffcc;
-            padding: 10px 15px;
-            border-radius: 20px;
-            font-size: 14px;
-            backdrop-filter: blur(5px);
-            align-self: flex-start;
-            pointer-events: auto;
-        }
-
-        /* 啟動按鈕 / 載入畫面 */
-        #start-screen {
-            position: absolute;
-            top: 0;
-            left: 0;
+        .container {
             width: 100%;
-            height: 100%;
-            background: rgba(0, 0, 0, 0.85);
-            z-index: 20;
+            max-width: 600px;
             display: flex;
             flex-direction: column;
-            justify-content: center;
-            align-items: center;
+            gap: 20px;
+        }
+
+        h1 {
             text-align: center;
+            margin-bottom: 10px;
+            font-size: 1.5rem;
+            background: linear-gradient(45deg, #646cff, #a564ff);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .status-bar {
+            background-color: var(--card-bg);
+            padding: 10px 15px;
+            border-radius: 8px;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+
+        .status-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            background-color: #666;
+            margin-right: 8px;
+        }
+        .status-dot.active { background-color: var(--success-color); box-shadow: 0 0 8px var(--success-color); }
+        .status-dot.loading { background-color: #ffa500; animation: pulse 1s infinite; }
+
+        .card {
+            background-color: var(--card-bg);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        textarea {
+            width: 100%;
+            height: 120px;
+            background-color: #1a1a1a;
+            border: 1px solid #444;
             color: white;
+            padding: 15px;
+            border-radius: 12px;
+            font-size: 1rem;
+            resize: none;
+            box-sizing: border-box;
+            outline: none;
+            transition: border-color 0.3s;
+        }
+
+        textarea:focus {
+            border-color: var(--accent-color);
         }
 
         button {
-            background: #007aff;
+            width: 100%;
+            padding: 14px;
+            margin-top: 15px;
+            background-color: var(--accent-color);
             color: white;
             border: none;
-            padding: 15px 40px;
-            font-size: 18px;
-            border-radius: 30px;
+            border-radius: 12px;
+            font-size: 1rem;
+            font-weight: bold;
             cursor: pointer;
+            transition: background-color 0.3s, transform 0.1s;
+        }
+
+        button:active { transform: scale(0.98); }
+        button:disabled { background-color: #555; cursor: not-allowed; opacity: 0.7; }
+        button:hover:not(:disabled) { background-color: var(--accent-hover); }
+
+        #result {
             margin-top: 20px;
-            font-weight: bold;
-            box-shadow: 0 4px 15px rgba(0,122,255,0.4);
-            transition: transform 0.2s;
+            line-height: 1.6;
+            white-space: pre-wrap;
         }
 
-        button:active {
-            transform: scale(0.95);
+        .progress-container {
+            margin-top: 10px;
+            display: none;
+        }
+        
+        .progress-text {
+            font-size: 0.8rem;
+            color: #aaa;
+            margin-bottom: 5px;
+            display: block;
         }
 
-        button:disabled {
-            background: #555;
+        .progress-bar {
+            width: 100%;
+            height: 6px;
+            background-color: #444;
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background-color: var(--accent-color);
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+
+        .note {
+            font-size: 0.8rem;
             color: #888;
-            cursor: not-allowed;
-            box-shadow: none;
+            text-align: center;
+            margin-top: 20px;
         }
 
-        .loader {
-            border: 4px solid #f3f3f3;
-            border-top: 4px solid #00ffcc;
-            border-radius: 50%;
-            width: 40px;
-            height: 40px;
-            animation: spin 1s linear infinite;
-            margin-bottom: 20px;
-            display: none; /* 預設隱藏 */
-        }
+        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
 
-        @keyframes spin {
-            0% { transform: rotate(0deg); }
-            100% { transform: rotate(360deg); }
-        }
-
-        /* 偵測框樣式設定 (由 JS 動態繪製，此處為文字樣式) */
-        .prediction-text {
-            font-weight: bold;
-            text-transform: uppercase;
+        /* Mobile optimization */
+        @media (max-width: 480px) {
+            body { padding: 15px; }
+            h1 { font-size: 1.3rem; }
         }
     </style>
 </head>
 <body>
 
-    <div id="cam-container">
-        <video id="video" playsinline muted autoplay></video>
-        <canvas id="canvas"></canvas>
-    </div>
+    <div class="container">
+        <h1>🧠 AI 心情分析儀</h1>
 
-    <div id="ui-layer">
-        <div class="status-bar" id="status">等待啟動...</div>
-    </div>
+        <div class="status-bar">
+            <div style="display:flex; align-items:center;">
+                <div id="statusDot" class="status-dot"></div>
+                <span id="statusText">系統待命</span>
+            </div>
+            <span id="hardwareInfo" style="font-size:0.75rem; color:#888;">WebGPU</span>
+        </div>
 
-    <div id="start-screen">
-        <div class="loader" id="loader"></div>
-        <h2 id="loading-text">準備載入 AI 模型</h2>
-        <p style="font-size: 0.9em; color: #aaa; margin: 0 20px;">
-            請允許相機權限。<br>模型載入後可離線使用。
-        </p>
-        <button id="btn-start">開始辨識</button>
-    </div>
-
-    <script>
-        // DOM 元素
-        const video = document.getElementById('video');
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const btnStart = document.getElementById('btn-start');
-        const statusText = document.getElementById('status');
-        const startScreen = document.getElementById('start-screen');
-        const loader = document.getElementById('loader');
-        const loadingText = document.getElementById('loading-text');
-
-        let model = undefined;
-        let isDetecting = false;
-
-        // 1. 初始化：綁定按鈕事件
-        btnStart.addEventListener('click', async () => {
-            btnStart.style.display = 'none'; // 隱藏按鈕
-            loader.style.display = 'block';  // 顯示讀取圈圈
-            loadingText.innerText = "正在載入 AI 模型 (約 2-5 MB)...";
+        <div class="card">
+            <label for="input-text" style="display:block; margin-bottom:10px; font-weight:bold;">你想說什麼？</label>
+            <textarea id="input-text" placeholder="輸入你今天發生的事，或當下的心情..."></textarea>
             
+            <div class="progress-container" id="progressContainer">
+                <span class="progress-text" id="progressText">準備下載模型...</span>
+                <div class="progress-bar">
+                    <div class="progress-fill" id="progressFill"></div>
+                </div>
+            </div>
+
+            <button id="actionBtn">載入並啟動模型 (需約 800MB)</button>
+        </div>
+
+        <div class="card" id="resultCard" style="display:none;">
+            <h3 style="margin-top:0;">AI 分析結果：</h3>
+            <div id="result"></div>
+        </div>
+
+        <div class="note">
+            * 首次使用需下載模型，請連接 Wi-Fi。<br>
+            * 下載完成後，可開啟飛航模式離線使用。<br>
+            * 使用 Llama-3.2-1B-Instruct 模型。
+        </div>
+    </div>
+
+    <script type="module">
+        import { CreateMLCEngine } from "https://esm.run/@mlc-ai/webllm";
+
+        // 設定模型：使用 Llama-3.2-1B-Instruct
+        // 這是一個非常輕量 (q4f16_1 約 800MB) 但對話能力不錯的模型，適合手機。
+        const selectedModel = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+
+        const $ = (id) => document.getElementById(id);
+        const actionBtn = $('actionBtn');
+        const inputText = $('input-text');
+        const resultDiv = $('result');
+        const resultCard = $('resultCard');
+        const statusText = $('statusText');
+        const statusDot = $('statusDot');
+        const progressContainer = $('progressContainer');
+        const progressFill = $('progressFill');
+        const progressText = $('progressText');
+
+        let engine = null;
+        let isModelLoaded = false;
+
+        // 系統 Prompt：定義 AI 的角色
+        const SYSTEM_PROMPT = `
+你是一位具有同理心的心理諮商師與情緒分析專家。
+使用繁體中文(Traditional Chinese)回答。
+請閱讀使用者的文字，並執行以下任務：
+1. 偵測並命名使用者的主要情緒 (例如：焦慮、快樂、憤怒、無助)。
+2. 給予一段簡短、溫暖且具建設性的評語或建議。
+3. 保持語氣溫柔。
+`;
+
+        // 初始化回調函數：處理下載進度
+        const initProgressCallback = (report) => {
+            console.log(report);
+            progressContainer.style.display = 'block';
+            
+            // 更新文字
+            progressText.textContent = report.text;
+            
+            // 解析進度並更新 Bar
+            // WebLLM 的 report.progress 是一個 0 到 1 的數字
+            // 有時候是下載，有時候是載入 cache
+            if (report.progress) {
+                const percent = Math.round(report.progress * 100);
+                progressFill.style.width = `${percent}%`;
+            }
+        };
+
+        async function loadModel() {
             try {
-                await initAI();
-            } catch (error) {
-                console.error(error);
-                loadingText.innerText = "錯誤: " + error.message;
-                loader.style.display = 'none';
-                btnStart.style.display = 'inline-block';
-                btnStart.innerText = "重試";
+                actionBtn.disabled = true;
+                actionBtn.textContent = "模型初始化中...";
+                statusDot.className = "status-dot loading";
+                statusText.textContent = "正在載入模型...";
+
+                // 檢查 WebGPU 支援
+                if (!navigator.gpu) {
+                    throw new Error("您的瀏覽器不支援 WebGPU，無法執行 AI 模型。請使用最新版 Chrome/Edge。");
+                }
+
+                // 建立引擎
+                engine = await CreateMLCEngine(
+                    selectedModel,
+                    { initProgressCallback: initProgressCallback }
+                );
+
+                isModelLoaded = true;
+                statusDot.className = "status-dot active";
+                statusText.textContent = "AI 就緒 (離線可用)";
+                actionBtn.textContent = "開始分析心情";
+                actionBtn.disabled = false;
+                progressContainer.style.display = 'none';
+                
+                // 預熱完成提示
+                alert("模型載入完成！您現在可以斷開網路測試。");
+
+            } catch (err) {
+                console.error(err);
+                statusDot.style.backgroundColor = "var(--error-color)";
+                statusText.textContent = "載入失敗";
+                actionBtn.textContent = "重試";
+                actionBtn.disabled = false;
+                alert("錯誤：" + err.message);
+            }
+        }
+
+        async function analyzeMood() {
+            const userText = inputText.value.trim();
+            if (!userText) {
+                alert("請先輸入一些文字喔！");
+                return;
+            }
+
+            actionBtn.disabled = true;
+            actionBtn.textContent = "分析中...";
+            resultCard.style.display = 'block';
+            resultDiv.textContent = "思考中...";
+
+            try {
+                const messages = [
+                    { role: "system", content: SYSTEM_PROMPT },
+                    { role: "user", content: userText }
+                ];
+
+                const chunks = await engine.chat.completions.create({
+                    messages,
+                    temperature: 0.7,
+                    stream: true, // 使用串流讓體驗更好
+                });
+
+                let fullResponse = "";
+                resultDiv.textContent = ""; // 清空
+
+                for await (const chunk of chunks) {
+                    const content = chunk.choices[0]?.delta?.content || "";
+                    fullResponse += content;
+                    resultDiv.textContent = fullResponse;
+                    // 自動捲動到底部
+                    window.scrollTo(0, document.body.scrollHeight);
+                }
+
+            } catch (err) {
+                resultDiv.textContent = "分析發生錯誤：" + err.message;
+            } finally {
+                actionBtn.disabled = false;
+                actionBtn.textContent = "再次分析";
+            }
+        }
+
+        actionBtn.addEventListener('click', () => {
+            if (!isModelLoaded) {
+                loadModel();
+            } else {
+                analyzeMood();
             }
         });
 
-        // 2. 核心初始化函式
-        async function initAI() {
-            // A. 載入 COCO-SSD 模型
-            // 此模型會自動下載並存入瀏覽器快取
-            model = await cocoSsd.load();
-            loadingText.innerText = "模型載入完成，正在啟動相機...";
-
-            // B. 啟動相機
-            await setupCamera();
-            
-            // C. 調整 Canvas 尺寸並開始偵測
-            startScreen.style.display = 'none'; // 隱藏啟動畫面
-            statusText.innerText = "AI 運作中 - On Device";
-            
-            resizeCanvas();
-            predictLoop();
-
-            // 監聽視窗大小改變 (旋轉手機時)
-            window.addEventListener('resize', resizeCanvas);
-        }
-
-        // 3. 設定相機
-        async function setupCamera() {
-            const constraints = {
-                audio: false,
-                video: {
-                    facingMode: 'environment', // 優先使用後鏡頭
-                    // 為了效能，不要設定太高的解析度，640x480 對手機辨識來說足夠
-                    width: { ideal: 640 }, 
-                    height: { ideal: 480 }
-                }
-            };
-
-            const stream = await navigator.mediaDevices.getUserMedia(constraints);
-            video.srcObject = stream;
-
-            return new Promise((resolve) => {
-                video.onloadedmetadata = () => {
-                    resolve(video);
-                };
-            });
-        }
-
-        // 4. 調整 Canvas 尺寸以匹配 Video 顯示大小
-        function resizeCanvas() {
-            canvas.width = video.videoWidth;
-            canvas.height = video.videoHeight;
-            
-            // 因為 CSS 用 object-fit: cover 強制填滿，
-            // 這裡我們讓 Canvas 的解析度跟隨影片原始解析度，
-            // CSS 會負責把 Canvas 拉伸到跟 Video 一樣大。
-        }
-
-        // 5. 預測循環 (Loop)
-        async function predictLoop() {
-            if (!model) return;
-
-            // 進行預測
-            // detect 參數：影像來源, maxNumBoxes, minScore
-            const predictions = await model.detect(video, 20, 0.5);
-
-            // 繪製結果
-            drawPredictions(predictions);
-
-            // 使用 requestAnimationFrame 達到最順暢的 FPS
-            requestAnimationFrame(predictLoop);
-        }
-
-        // 6. 繪製方框與標籤
-        function drawPredictions(predictions) {
-            // 清空畫布
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            const font = "16px sans-serif";
-            ctx.font = font;
-            ctx.textBaseline = "top";
-
-            predictions.forEach(prediction => {
-                const [x, y, width, height] = prediction['bbox'];
-                const text = prediction['class'];
-                const score = Math.round(prediction['score'] * 100) + '%';
-
-                // 畫框框
-                ctx.strokeStyle = "#00FFFF";
-                ctx.lineWidth = 4;
-                ctx.strokeRect(x, y, width, height);
-
-                // 畫背景標籤 (半透明黑底)
-                const textWidth = ctx.measureText(text + " " + score).width;
-                const textHeight = 16; // 根據字體大小估算
-                ctx.fillStyle = "rgba(0, 0, 0, 0.7)";
-                ctx.fillRect(x, y, textWidth + 10, textHeight + 10);
-
-                // 畫文字
-                ctx.fillStyle = "#FFFFFF";
-                ctx.fillText(text + " - " + score, x + 5, y + 5);
-            });
-        }
     </script>
 </body>
 </html>
