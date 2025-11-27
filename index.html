@@ -3,29 +3,27 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 心情分析儀 (On-Device)</title>
+    <title>AI 視覺分析 (離線版)</title>
     <style>
         :root {
-            --bg-color: #1a1a1a;
-            --card-bg: #2d2d2d;
-            --text-color: #e0e0e0;
-            --accent-color: #646cff;
-            --accent-hover: #535bf2;
-            --error-color: #ff6b6b;
-            --success-color: #4caf50;
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --text-color: #f1f5f9;
+            --accent-color: #38bdf8;
+            --btn-bg: #0ea5e9;
+            --btn-hover: #0284c7;
         }
 
         body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             background-color: var(--bg-color);
             color: var(--text-color);
             margin: 0;
-            padding: 20px;
+            padding: 15px;
             display: flex;
             flex-direction: column;
             align-items: center;
             min-height: 100vh;
-            box-sizing: border-box;
         }
 
         .container {
@@ -33,14 +31,14 @@
             max-width: 600px;
             display: flex;
             flex-direction: column;
-            gap: 20px;
+            gap: 15px;
         }
 
         h1 {
             text-align: center;
-            margin-bottom: 10px;
+            margin: 10px 0;
             font-size: 1.5rem;
-            background: linear-gradient(45deg, #646cff, #a564ff);
+            background: linear-gradient(90deg, #38bdf8, #818cf8);
             -webkit-background-clip: text;
             -webkit-text-fill-color: transparent;
         }
@@ -49,292 +47,363 @@
             background-color: var(--card-bg);
             padding: 10px 15px;
             border-radius: 8px;
-            font-size: 0.9rem;
+            font-size: 0.85rem;
             display: flex;
-            align-items: center;
             justify-content: space-between;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            align-items: center;
+            border: 1px solid #334155;
         }
 
-        .status-dot {
-            width: 10px;
-            height: 10px;
-            border-radius: 50%;
-            background-color: #666;
-            margin-right: 8px;
-        }
-        .status-dot.active { background-color: var(--success-color); box-shadow: 0 0 8px var(--success-color); }
-        .status-dot.loading { background-color: #ffa500; animation: pulse 1s infinite; }
-
-        .card {
-            background-color: var(--card-bg);
-            padding: 20px;
-            border-radius: 16px;
-            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
-        }
-
-        textarea {
+        .image-container {
+            position: relative;
             width: 100%;
-            height: 120px;
-            background-color: #1a1a1a;
-            border: 1px solid #444;
-            color: white;
-            padding: 15px;
+            background-color: #000;
             border-radius: 12px;
-            font-size: 1rem;
-            resize: none;
-            box-sizing: border-box;
-            outline: none;
-            transition: border-color 0.3s;
+            overflow: hidden;
+            min-height: 200px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            border: 2px dashed #334155;
         }
 
-        textarea:focus {
-            border-color: var(--accent-color);
-        }
-
-        button {
+        /* 確保 Canvas 重疊 */
+        .image-container canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
-            padding: 14px;
-            margin-top: 15px;
-            background-color: var(--accent-color);
+            height: 100%;
+            object-fit: contain;
+        }
+
+        #imageCanvas { z-index: 1; } /* 原圖 */
+        #maskCanvas { z-index: 2; opacity: 0.6; pointer-events: none; } /* 分割遮罩 */
+
+        .controls {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+
+        button, .file-btn {
+            background-color: var(--btn-bg);
             color: white;
             border: none;
-            border-radius: 12px;
+            padding: 12px;
+            border-radius: 8px;
             font-size: 1rem;
-            font-weight: bold;
+            font-weight: 600;
             cursor: pointer;
-            transition: background-color 0.3s, transform 0.1s;
-        }
-
-        button:active { transform: scale(0.98); }
-        button:disabled { background-color: #555; cursor: not-allowed; opacity: 0.7; }
-        button:hover:not(:disabled) { background-color: var(--accent-hover); }
-
-        #result {
-            margin-top: 20px;
-            line-height: 1.6;
-            white-space: pre-wrap;
-        }
-
-        .progress-container {
-            margin-top: 10px;
-            display: none;
-        }
-        
-        .progress-text {
-            font-size: 0.8rem;
-            color: #aaa;
-            margin-bottom: 5px;
+            text-align: center;
+            transition: background 0.2s;
             display: block;
         }
 
-        .progress-bar {
-            width: 100%;
-            height: 6px;
-            background-color: #444;
-            border-radius: 3px;
-            overflow: hidden;
+        button:disabled { background-color: #475569; opacity: 0.7; cursor: not-allowed; }
+        button:active { transform: scale(0.98); }
+
+        input[type="file"] { display: none; }
+
+        .legend {
+            background-color: var(--card-bg);
+            padding: 15px;
+            border-radius: 12px;
+            margin-top: 10px;
+            display: none; /* 分析後顯示 */
         }
 
-        .progress-fill {
-            height: 100%;
-            background-color: var(--accent-color);
-            width: 0%;
-            transition: width 0.3s ease;
+        .legend-title { font-size: 0.9rem; margin-bottom: 10px; color: #94a3b8; }
+        
+        .legend-items {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
         }
 
-        .note {
-            font-size: 0.8rem;
-            color: #888;
-            text-align: center;
-            margin-top: 20px;
+        .tag {
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.75rem;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+            font-weight: bold;
         }
 
-        @keyframes pulse { 0% { opacity: 0.4; } 50% { opacity: 1; } 100% { opacity: 0.4; } }
-
-        /* Mobile optimization */
-        @media (max-width: 480px) {
-            body { padding: 15px; }
-            h1 { font-size: 1.3rem; }
+        .loading-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.7);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
         }
+
+        .spinner {
+            width: 30px; height: 30px;
+            border: 3px solid #ffffff;
+            border-top: 3px solid transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 10px;
+        }
+
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
 <body>
 
-    <div class="container">
-        <h1>🧠 AI 心情分析儀</h1>
+<div class="container">
+    <h1>👁️ AI 語意分割相機</h1>
 
-        <div class="status-bar">
-            <div style="display:flex; align-items:center;">
-                <div id="statusDot" class="status-dot"></div>
-                <span id="statusText">系統待命</span>
-            </div>
-            <span id="hardwareInfo" style="font-size:0.75rem; color:#888;">WebGPU</span>
-        </div>
+    <div class="status-bar">
+        <span id="statusText">系統待命 (未載入模型)</span>
+        <span id="memInfo">SegFormer-b0</span>
+    </div>
 
-        <div class="card">
-            <label for="input-text" style="display:block; margin-bottom:10px; font-weight:bold;">你想說什麼？</label>
-            <textarea id="input-text" placeholder="輸入你今天發生的事，或當下的心情..."></textarea>
-            
-            <div class="progress-container" id="progressContainer">
-                <span class="progress-text" id="progressText">準備下載模型...</span>
-                <div class="progress-bar">
-                    <div class="progress-fill" id="progressFill"></div>
-                </div>
-            </div>
-
-            <button id="actionBtn">載入並啟動模型 (需約 800MB)</button>
-        </div>
-
-        <div class="card" id="resultCard" style="display:none;">
-            <h3 style="margin-top:0;">AI 分析結果：</h3>
-            <div id="result"></div>
-        </div>
-
-        <div class="note">
-            * 首次使用需下載模型，請連接 Wi-Fi。<br>
-            * 下載完成後，可開啟飛航模式離線使用。<br>
-            * 使用 Llama-3.2-1B-Instruct 模型。
+    <div class="image-container" id="imgContainer">
+        <div style="color: #64748b;">請選擇圖片或拍照</div>
+        <canvas id="imageCanvas"></canvas>
+        <canvas id="maskCanvas"></canvas>
+        
+        <div class="loading-overlay" id="loader">
+            <div class="spinner"></div>
+            <span id="loaderText">AI 思考中...</span>
         </div>
     </div>
 
-    <script type="module">
-        import { CreateMLCEngine } from "https://esm.run/@mlc-ai/webllm";
+    <div class="controls">
+        <label class="file-btn">
+            📷 拍照 / 選圖
+            <input type="file" id="uploadInput" accept="image/*">
+        </label>
+        
+        <button id="runBtn" disabled>▶ 開始分析</button>
+    </div>
 
-        // 設定模型：使用 Llama-3.2-1B-Instruct
-        // 這是一個非常輕量 (q4f16_1 約 800MB) 但對話能力不錯的模型，適合手機。
-        const selectedModel = "Llama-3.2-1B-Instruct-q4f16_1-MLC";
+    <button id="loadBtn" style="width: 100%; margin-top: 10px; background-color: #4f46e5;">
+        ⬇ 下載模型 (約 20MB)
+    </button>
 
-        const $ = (id) => document.getElementById(id);
-        const actionBtn = $('actionBtn');
-        const inputText = $('input-text');
-        const resultDiv = $('result');
-        const resultCard = $('resultCard');
-        const statusText = $('statusText');
-        const statusDot = $('statusDot');
-        const progressContainer = $('progressContainer');
-        const progressFill = $('progressFill');
-        const progressText = $('progressText');
+    <div class="legend" id="legendArea">
+        <div class="legend-title">偵測到的物件：</div>
+        <div class="legend-items" id="legendTags"></div>
+    </div>
+    
+    <div style="margin-top: 20px; font-size: 0.8rem; color: #64748b; text-align: center;">
+        <p>第一次需連網下載模型。之後可開啟飛航模式使用。</p>
+    </div>
+</div>
 
-        let engine = null;
-        let isModelLoaded = false;
+<script type="module">
+    // 使用 jsdelivr CDN 載入 transformers.js
+    import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
 
-        // 系統 Prompt：定義 AI 的角色
-        const SYSTEM_PROMPT = `
-你是一位具有同理心的心理諮商師與情緒分析專家。
-使用繁體中文(Traditional Chinese)回答。
-請閱讀使用者的文字，並執行以下任務：
-1. 偵測並命名使用者的主要情緒 (例如：焦慮、快樂、憤怒、無助)。
-2. 給予一段簡短、溫暖且具建設性的評語或建議。
-3. 保持語氣溫柔。
-`;
+    // *** 重要設定：允許快取，這是離線運作的關鍵 ***
+    env.allowLocalModels = false;
+    env.useBrowserCache = true;
 
-        // 初始化回調函數：處理下載進度
-        const initProgressCallback = (report) => {
-            console.log(report);
-            progressContainer.style.display = 'block';
+    const $ = id => document.getElementById(id);
+    const statusText = $('statusText');
+    const loadBtn = $('loadBtn');
+    const runBtn = $('runBtn');
+    const uploadInput = $('uploadInput');
+    const imageCanvas = $('imageCanvas');
+    const maskCanvas = $('maskCanvas');
+    const loader = $('loader');
+    const loaderText = $('loaderText');
+    const legendArea = $('legendArea');
+    const legendTags = $('legendTags');
+    const imgContainer = $('imgContainer');
+
+    let segmenter = null;
+    let rawImage = null; // 儲存原始圖片資料
+
+    // 1. 載入模型
+    loadBtn.addEventListener('click', async () => {
+        try {
+            loadBtn.disabled = true;
+            loadBtn.textContent = "模型下載中...";
+            statusText.textContent = "正在下載模型 (請勿關閉)...";
             
-            // 更新文字
-            progressText.textContent = report.text;
-            
-            // 解析進度並更新 Bar
-            // WebLLM 的 report.progress 是一個 0 到 1 的數字
-            // 有時候是下載，有時候是載入 cache
-            if (report.progress) {
-                const percent = Math.round(report.progress * 100);
-                progressFill.style.width = `${percent}%`;
-            }
-        };
-
-        async function loadModel() {
-            try {
-                actionBtn.disabled = true;
-                actionBtn.textContent = "模型初始化中...";
-                statusDot.className = "status-dot loading";
-                statusText.textContent = "正在載入模型...";
-
-                // 檢查 WebGPU 支援
-                if (!navigator.gpu) {
-                    throw new Error("您的瀏覽器不支援 WebGPU，無法執行 AI 模型。請使用最新版 Chrome/Edge。");
+            // 初始化 Pipeline
+            // 模型：Xenova/segformer-b0-finetuned-ade-512-512 (輕量化場景分割)
+            segmenter = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512', {
+                progress_callback: (data) => {
+                    if (data.status === 'progress') {
+                        const pct = Math.round(data.progress || 0);
+                        loadBtn.textContent = `下載中... ${pct}%`;
+                    }
                 }
+            });
 
-                // 建立引擎
-                engine = await CreateMLCEngine(
-                    selectedModel,
-                    { initProgressCallback: initProgressCallback }
-                );
+            statusText.textContent = "模型已就緒 (可離線使用)";
+            loadBtn.style.display = 'none'; // 下載完就隱藏
+            runBtn.disabled = false;
+            
+            // 如果已經選了圖，就自動跑一次
+            if (rawImage) runBtn.click();
 
-                isModelLoaded = true;
-                statusDot.className = "status-dot active";
-                statusText.textContent = "AI 就緒 (離線可用)";
-                actionBtn.textContent = "開始分析心情";
-                actionBtn.disabled = false;
-                progressContainer.style.display = 'none';
+        } catch (err) {
+            console.error(err);
+            statusText.textContent = "載入失敗，請檢查網路";
+            loadBtn.textContent = "重試下載";
+            loadBtn.disabled = false;
+            alert("模型載入失敗：" + err.message);
+        }
+    });
+
+    // 2. 處理圖片上傳
+    uploadInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+                // 設定 Canvas 大小
+                // 限制最大寬度以提升手機效能
+                const maxSize = 800; 
+                let w = img.width;
+                let h = img.height;
                 
-                // 預熱完成提示
-                alert("模型載入完成！您現在可以斷開網路測試。");
-
-            } catch (err) {
-                console.error(err);
-                statusDot.style.backgroundColor = "var(--error-color)";
-                statusText.textContent = "載入失敗";
-                actionBtn.textContent = "重試";
-                actionBtn.disabled = false;
-                alert("錯誤：" + err.message);
-            }
-        }
-
-        async function analyzeMood() {
-            const userText = inputText.value.trim();
-            if (!userText) {
-                alert("請先輸入一些文字喔！");
-                return;
-            }
-
-            actionBtn.disabled = true;
-            actionBtn.textContent = "分析中...";
-            resultCard.style.display = 'block';
-            resultDiv.textContent = "思考中...";
-
-            try {
-                const messages = [
-                    { role: "system", content: SYSTEM_PROMPT },
-                    { role: "user", content: userText }
-                ];
-
-                const chunks = await engine.chat.completions.create({
-                    messages,
-                    temperature: 0.7,
-                    stream: true, // 使用串流讓體驗更好
-                });
-
-                let fullResponse = "";
-                resultDiv.textContent = ""; // 清空
-
-                for await (const chunk of chunks) {
-                    const content = chunk.choices[0]?.delta?.content || "";
-                    fullResponse += content;
-                    resultDiv.textContent = fullResponse;
-                    // 自動捲動到底部
-                    window.scrollTo(0, document.body.scrollHeight);
+                if (w > maxSize || h > maxSize) {
+                    const ratio = Math.min(maxSize / w, maxSize / h);
+                    w *= ratio;
+                    h *= ratio;
                 }
 
-            } catch (err) {
-                resultDiv.textContent = "分析發生錯誤：" + err.message;
-            } finally {
-                actionBtn.disabled = false;
-                actionBtn.textContent = "再次分析";
-            }
+                imageCanvas.width = w;
+                imageCanvas.height = h;
+                maskCanvas.width = w;
+                maskCanvas.height = h;
+
+                // 繪製原圖
+                const ctx = imageCanvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, w, h);
+                
+                // 清空遮罩層
+                const mCtx = maskCanvas.getContext('2d');
+                mCtx.clearRect(0, 0, w, h);
+                
+                // 隱藏提示字
+                imgContainer.querySelector('div').style.display = 'none';
+                legendArea.style.display = 'none';
+
+                // 儲存為 Blob URL 供 AI 使用
+                rawImage = imageCanvas.toDataURL('image/jpeg');
+
+                // 如果模型已經好了，啟用按鈕
+                if (segmenter) runBtn.disabled = false;
+            };
+            img.src = event.target.result;
+        };
+        reader.readAsDataURL(file);
+    });
+
+    // 3. 執行分割 (Inference)
+    runBtn.addEventListener('click', async () => {
+        if (!segmenter || !rawImage) {
+            alert("請先載入模型並選擇圖片");
+            return;
         }
 
-        actionBtn.addEventListener('click', () => {
-            if (!isModelLoaded) {
-                loadModel();
-            } else {
-                analyzeMood();
-            }
+        loader.style.display = 'flex';
+        loaderText.textContent = "AI 正在識別畫面...";
+        runBtn.disabled = true;
+
+        try {
+            // 執行預測
+            const output = await segmenter(rawImage);
+            
+            // output 是一個陣列，包含每個偵測到的物件： { label: "person", score: 0.9, mask: RawImage }
+            console.log("分析結果:", output);
+
+            // 繪製結果
+            drawSegmentation(output);
+
+        } catch (err) {
+            console.error(err);
+            alert("分析發生錯誤：" + err.message);
+        } finally {
+            loader.style.display = 'none';
+            runBtn.disabled = false;
+        }
+    });
+
+    // 4. 繪製遮罩與標籤
+    function drawSegmentation(results) {
+        const ctx = maskCanvas.getContext('2d');
+        const w = maskCanvas.width;
+        const h = maskCanvas.height;
+        ctx.clearRect(0, 0, w, h);
+        
+        legendTags.innerHTML = '';
+        const usedColors = new Set();
+
+        // 反向遍歷，通常大背景在前，小物體在後，我們希望小物體蓋在上面
+        // 但 SegFormer 輸出的順序不定，我們直接畫
+        results.forEach((item, index) => {
+            const { label, mask } = item;
+            
+            // 產生隨機顏色 (固定種子讓同一類別顏色盡量一致的邏輯比較複雜，這裡用隨機)
+            // 為了美觀，使用 HSL 高飽和度
+            const color = `hsla(${(index * 137.5) % 360}, 70%, 50%, 0.6)`; 
+            const solidColor = `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
+
+            // 將 RawImage 轉為 Canvas ImageBitmap 並繪製
+            // mask 是 transformers.js 的 RawImage 物件
+            const maskCanvasElem = document.createElement('canvas');
+            maskCanvasElem.width = mask.width;
+            maskCanvasElem.height = mask.height;
+            const maskCtx = maskCanvasElem.getContext('2d');
+            
+            // 建立 ImageData
+            const imgData = new ImageData(mask.data, mask.width, mask.height);
+            maskCtx.putImageData(imgData, 0, 0);
+
+            // 將黑白遮罩變成彩色
+            // 使用 globalCompositeOperation
+            ctx.save();
+            // 先畫顏色
+            ctx.fillStyle = color;
+            
+            // 這裡比較 tricky：mask.data 通常是單通道的 alpha 遮罩
+            // 我們需要將 mask 畫到主 canvas 上，並套用顏色
+            
+            // 簡單解法：建立一個暫存 canvas 畫出該物件的形狀
+            const tempC = document.createElement('canvas');
+            tempC.width = w;
+            tempC.height = h;
+            const tCtx = tempC.getContext('2d');
+            
+            // 縮放 mask 到主圖片大小
+            tCtx.drawImage(maskCanvasElem, 0, 0, w, h);
+            
+            // 上色：source-in 只保留重疊部分
+            tCtx.globalCompositeOperation = 'source-in';
+            tCtx.fillStyle = color;
+            tCtx.fillRect(0, 0, w, h);
+            
+            // 畫回主 maskCanvas
+            ctx.drawImage(tempC, 0, 0);
+            ctx.restore();
+
+            // 新增標籤到下方 Legend
+            const tag = document.createElement('span');
+            tag.className = 'tag';
+            tag.style.backgroundColor = solidColor;
+            tag.textContent = label;
+            legendTags.appendChild(tag);
         });
 
-    </script>
+        legendArea.style.display = 'block';
+    }
+</script>
+
 </body>
 </html>
