@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>AI 視覺分析 (離線版)</title>
+    <title>AI 視覺分析 (離線修正版)</title>
     <style>
         :root {
             --bg-color: #0f172a;
@@ -67,7 +67,6 @@
             border: 2px dashed #334155;
         }
 
-        /* 確保 Canvas 重疊 */
         .image-container canvas {
             position: absolute;
             top: 0;
@@ -77,8 +76,8 @@
             object-fit: contain;
         }
 
-        #imageCanvas { z-index: 1; } /* 原圖 */
-        #maskCanvas { z-index: 2; opacity: 0.6; pointer-events: none; } /* 分割遮罩 */
+        #imageCanvas { z-index: 1; } 
+        #maskCanvas { z-index: 2; opacity: 0.7; pointer-events: none; } 
 
         .controls {
             display: grid;
@@ -110,7 +109,7 @@
             padding: 15px;
             border-radius: 12px;
             margin-top: 10px;
-            display: none; /* 分析後顯示 */
+            display: none; 
         }
 
         .legend-title { font-size: 0.9rem; margin-bottom: 10px; color: #94a3b8; }
@@ -161,7 +160,7 @@
 
     <div class="status-bar">
         <span id="statusText">系統待命 (未載入模型)</span>
-        <span id="memInfo">SegFormer-b0</span>
+        <span id="memInfo">SegFormer</span>
     </div>
 
     <div class="image-container" id="imgContainer">
@@ -171,7 +170,7 @@
         
         <div class="loading-overlay" id="loader">
             <div class="spinner"></div>
-            <span id="loaderText">AI 思考中...</span>
+            <span id="loaderText">AI 運算中...</span>
         </div>
     </div>
 
@@ -194,15 +193,14 @@
     </div>
     
     <div style="margin-top: 20px; font-size: 0.8rem; color: #64748b; text-align: center;">
-        <p>第一次需連網下載模型。之後可開啟飛航模式使用。</p>
+        <p>初次需連網，之後可離線使用。</p>
     </div>
 </div>
 
 <script type="module">
-    // 使用 jsdelivr CDN 載入 transformers.js
     import { pipeline, env } from 'https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/dist/transformers.min.js';
 
-    // *** 重要設定：允許快取，這是離線運作的關鍵 ***
+    // 離線關鍵設定
     env.allowLocalModels = false;
     env.useBrowserCache = true;
 
@@ -220,17 +218,16 @@
     const imgContainer = $('imgContainer');
 
     let segmenter = null;
-    let rawImage = null; // 儲存原始圖片資料
+    let rawImage = null; 
 
     // 1. 載入模型
     loadBtn.addEventListener('click', async () => {
         try {
             loadBtn.disabled = true;
             loadBtn.textContent = "模型下載中...";
-            statusText.textContent = "正在下載模型 (請勿關閉)...";
+            statusText.textContent = "正在下載模型...";
             
-            // 初始化 Pipeline
-            // 模型：Xenova/segformer-b0-finetuned-ade-512-512 (輕量化場景分割)
+            // 使用 SegFormer 模型
             segmenter = await pipeline('image-segmentation', 'Xenova/segformer-b0-finetuned-ade-512-512', {
                 progress_callback: (data) => {
                     if (data.status === 'progress') {
@@ -240,23 +237,22 @@
                 }
             });
 
-            statusText.textContent = "模型已就緒 (可離線使用)";
-            loadBtn.style.display = 'none'; // 下載完就隱藏
+            statusText.textContent = "模型已就緒 (離線可用)";
+            loadBtn.style.display = 'none';
             runBtn.disabled = false;
             
-            // 如果已經選了圖，就自動跑一次
             if (rawImage) runBtn.click();
 
         } catch (err) {
             console.error(err);
-            statusText.textContent = "載入失敗，請檢查網路";
+            statusText.textContent = "載入失敗";
             loadBtn.textContent = "重試下載";
             loadBtn.disabled = false;
-            alert("模型載入失敗：" + err.message);
+            alert("模型下載失敗，請檢查網路連接。");
         }
     });
 
-    // 2. 處理圖片上傳
+    // 2. 處理圖片
     uploadInput.addEventListener('change', (e) => {
         const file = e.target.files[0];
         if (!file) return;
@@ -265,9 +261,7 @@
         reader.onload = (event) => {
             const img = new Image();
             img.onload = () => {
-                // 設定 Canvas 大小
-                // 限制最大寬度以提升手機效能
-                const maxSize = 800; 
+                const maxSize = 800; // 限制大小優化效能
                 let w = img.width;
                 let h = img.height;
                 
@@ -282,22 +276,17 @@
                 maskCanvas.width = w;
                 maskCanvas.height = h;
 
-                // 繪製原圖
                 const ctx = imageCanvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, w, h);
                 
-                // 清空遮罩層
                 const mCtx = maskCanvas.getContext('2d');
                 mCtx.clearRect(0, 0, w, h);
                 
-                // 隱藏提示字
                 imgContainer.querySelector('div').style.display = 'none';
                 legendArea.style.display = 'none';
 
-                // 儲存為 Blob URL 供 AI 使用
                 rawImage = imageCanvas.toDataURL('image/jpeg');
 
-                // 如果模型已經好了，啟用按鈕
                 if (segmenter) runBtn.disabled = false;
             };
             img.src = event.target.result;
@@ -305,37 +294,31 @@
         reader.readAsDataURL(file);
     });
 
-    // 3. 執行分割 (Inference)
+    // 3. 執行預測
     runBtn.addEventListener('click', async () => {
         if (!segmenter || !rawImage) {
-            alert("請先載入模型並選擇圖片");
+            alert("請先載入模型並選圖");
             return;
         }
 
         loader.style.display = 'flex';
-        loaderText.textContent = "AI 正在識別畫面...";
+        loaderText.textContent = "AI 識別中...";
         runBtn.disabled = true;
 
         try {
-            // 執行預測
             const output = await segmenter(rawImage);
-            
-            // output 是一個陣列，包含每個偵測到的物件： { label: "person", score: 0.9, mask: RawImage }
-            console.log("分析結果:", output);
-
-            // 繪製結果
+            console.log("Segment Output:", output);
             drawSegmentation(output);
-
         } catch (err) {
             console.error(err);
-            alert("分析發生錯誤：" + err.message);
+            alert("分析錯誤: " + err.message);
         } finally {
             loader.style.display = 'none';
             runBtn.disabled = false;
         }
     });
 
-    // 4. 繪製遮罩與標籤
+    // 4. 繪製遮罩 (修正版：處理 Grayscale -> RGBA)
     function drawSegmentation(results) {
         const ctx = maskCanvas.getContext('2d');
         const w = maskCanvas.width;
@@ -343,57 +326,63 @@
         ctx.clearRect(0, 0, w, h);
         
         legendTags.innerHTML = '';
-        const usedColors = new Set();
 
-        // 反向遍歷，通常大背景在前，小物體在後，我們希望小物體蓋在上面
-        // 但 SegFormer 輸出的順序不定，我們直接畫
         results.forEach((item, index) => {
             const { label, mask } = item;
             
-            // 產生隨機顏色 (固定種子讓同一類別顏色盡量一致的邏輯比較複雜，這裡用隨機)
-            // 為了美觀，使用 HSL 高飽和度
-            const color = `hsla(${(index * 137.5) % 360}, 70%, 50%, 0.6)`; 
-            const solidColor = `hsl(${(index * 137.5) % 360}, 70%, 50%)`;
+            const hue = (index * 137.5) % 360;
+            const color = `hsla(${hue}, 70%, 50%, 0.6)`; 
+            const solidColor = `hsl(${hue}, 70%, 50%)`;
 
-            // 將 RawImage 轉為 Canvas ImageBitmap 並繪製
-            // mask 是 transformers.js 的 RawImage 物件
+            // --- 關鍵修正：將 1-channel mask 轉換為 4-channel RGBA ---
+            const pixelCount = mask.width * mask.height;
+            const rgbaData = new Uint8ClampedArray(pixelCount * 4);
+            
+            for (let i = 0; i < pixelCount; i++) {
+                const val = mask.data[i];
+                if (val > 0) {
+                    // 使用白色 (255,255,255) 配合 alpha
+                    // 之後會用 tint 染色
+                    rgbaData[i * 4] = 255;     // R
+                    rgbaData[i * 4 + 1] = 255; // G
+                    rgbaData[i * 4 + 2] = 255; // B
+                    rgbaData[i * 4 + 3] = 255; // A (完全不透明，因為我們用 composite 染色)
+                } else {
+                    rgbaData[i * 4 + 3] = 0;   // A (透明)
+                }
+            }
+            
+            const imgData = new ImageData(rgbaData, mask.width, mask.height);
+            // -------------------------------------------------------
+
+            // 建立暫存 Canvas
             const maskCanvasElem = document.createElement('canvas');
             maskCanvasElem.width = mask.width;
             maskCanvasElem.height = mask.height;
             const maskCtx = maskCanvasElem.getContext('2d');
-            
-            // 建立 ImageData
-            const imgData = new ImageData(mask.data, mask.width, mask.height);
             maskCtx.putImageData(imgData, 0, 0);
 
-            // 將黑白遮罩變成彩色
-            // 使用 globalCompositeOperation
+            // 染色與合成
             ctx.save();
-            // 先畫顏色
-            ctx.fillStyle = color;
             
-            // 這裡比較 tricky：mask.data 通常是單通道的 alpha 遮罩
-            // 我們需要將 mask 畫到主 canvas 上，並套用顏色
-            
-            // 簡單解法：建立一個暫存 canvas 畫出該物件的形狀
             const tempC = document.createElement('canvas');
             tempC.width = w;
             tempC.height = h;
             const tCtx = tempC.getContext('2d');
             
-            // 縮放 mask 到主圖片大小
+            // 縮放並繪製遮罩
             tCtx.drawImage(maskCanvasElem, 0, 0, w, h);
             
-            // 上色：source-in 只保留重疊部分
+            // 使用 source-in 只在有遮罩的地方上色
             tCtx.globalCompositeOperation = 'source-in';
             tCtx.fillStyle = color;
             tCtx.fillRect(0, 0, w, h);
             
-            // 畫回主 maskCanvas
+            // 畫回主層
             ctx.drawImage(tempC, 0, 0);
             ctx.restore();
 
-            // 新增標籤到下方 Legend
+            // 新增 Tag
             const tag = document.createElement('span');
             tag.className = 'tag';
             tag.style.backgroundColor = solidColor;
